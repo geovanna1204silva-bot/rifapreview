@@ -2,7 +2,8 @@
 // Tudo fica salvo no próprio aparelho (localStorage). A análise das fotos
 // usa a API do Claude com a chave que a pessoa cadastra em Ajustes.
 
-import { analyzeFoodPhoto, ScanError } from "./ai.js";
+import * as AI from "./ai.js";
+const needKey = () => AI.needsKey && !state.apiKey;
 
 /* =========================================================
    Armazenamento
@@ -410,7 +411,7 @@ function bindOnboarding(s) {
     save();
     tab = "hoje";
     render();
-    if (!state.apiKey) setTimeout(() => openKeySheet(true), 400);
+    if (needKey()) setTimeout(() => openKeySheet(true), 400);
   };
 }
 
@@ -555,8 +556,8 @@ function bindToday() {
     day().water += 250; save(); render();
   };
   document.querySelectorAll("[data-del]").forEach((b) => {
-    b.onclick = () => {
-      if (!confirm("Remover esta refeição?")) return;
+    b.onclick = async () => {
+      if (!(await askConfirm("Remover esta refeição?", "Remover"))) return;
       day().meals.splice(+b.dataset.del, 1); save(); render();
     };
   });
@@ -622,7 +623,7 @@ function pageScan() {
     </div>
     ${s.status !== "busy" ? `<div class="row-btns"><button class="btn" id="b-cam">📷 Câmera</button><button class="btn ghost" id="b-gal">🖼️ Galeria</button></div>` : ""}
     ${s.error ? `<div class="err">${esc(s.error)}</div>` : ""}
-    ${!state.apiKey ? `<div class="warn" style="margin-top:14px">Para analisar fotos, cadastre sua chave da API do Claude em <b>Ajustes</b>. <button class="link" id="goto-key" style="display:inline;margin:0;padding:0;color:var(--blue-2)">Cadastrar agora</button></div>` : ""}
+    ${needKey() ? `<div class="warn" style="margin-top:14px">Para analisar fotos, cadastre sua chave da API do Claude em <b>Ajustes</b>. <button class="link" id="goto-key" style="display:inline;margin:0;padding:0;color:var(--blue-2)">Cadastrar agora</button></div>` : ""}
   </div>`;
 }
 
@@ -670,12 +671,12 @@ function bindScan() {
 }
 
 async function handlePhoto(file) {
-  if (!state.apiKey) { openKeySheet(false); return; }
+  if (needKey()) { openKeySheet(false); return; }
   try {
     const dataUrl = await resizeImage(file, 1280, 0.85);
     scan = { ...scan, status: "busy", image: dataUrl, error: "" };
     render();
-    const result = await analyzeFoodPhoto({ apiKey: state.apiKey, dataUrl, profile: state.profile });
+    const result = await AI.analyzeFoodPhoto({ apiKey: state.apiKey, dataUrl, profile: state.profile });
     if (!result.e_comida || !result.itens.length) {
       scan = { ...scan, status: "idle", error: result.observacao || "Não identifiquei comida nessa foto. Tente fotografar o prato de cima, com boa luz." };
     } else {
@@ -683,7 +684,7 @@ async function handlePhoto(file) {
     }
   } catch (e) {
     console.error(e);
-    scan = { ...scan, status: "idle", error: e instanceof ScanError ? e.message : "Não foi possível ler essa imagem. Tente outra foto." };
+    scan = { ...scan, status: "idle", error: e instanceof AI.ScanError ? e.message : "Não foi possível ler essa imagem. Tente outra foto." };
   }
   if (tab === "escanear") render();
 }
@@ -805,10 +806,10 @@ function pageSettings() {
   const goal = { perder: "Perder peso", manter: "Manter", ganhar: "Ganhar peso" }[p.goal];
   return `<div class="page">
     <div class="page-h"><h1>Ajustes</h1></div>
-    <div class="card"><h3>Chave da IA (Claude)</h3>
+    ${AI.needsKey ? `<div class="card"><h3>Chave da IA (Claude)</h3>
       <p class="help" style="margin-top:0">${state.apiKey ? "✅ Chave cadastrada: …" + esc(state.apiKey.slice(-4)) : "Nenhuma chave cadastrada — necessária para analisar fotos."}</p>
       <button class="btn small" id="key">${state.apiKey ? "Trocar chave" : "Cadastrar chave"}</button>
-    </div>
+    </div>` : ""}
     <div class="card"><h3>Meu perfil</h3>
       <div class="set-row">Objetivo <span>${goal}</span></div>
       <div class="set-row">Peso meta <span>${fmt(p.target, 1)} kg</span></div>
@@ -824,7 +825,8 @@ function pageSettings() {
   </div>`;
 }
 function bindSettings() {
-  document.getElementById("key").onclick = () => openKeySheet(false);
+  const kb = document.getElementById("key");
+  if (kb) kb.onclick = () => openKeySheet(false);
   document.getElementById("redo").onclick = () => {
     const p = state.profile;
     draft = { name: p.name, goal: p.goal, sex: p.sex, age: p.age, height: p.height, weight: currentWeight(),
@@ -835,8 +837,8 @@ function bindSettings() {
     Object.assign(state, keep);
     render();
   };
-  document.getElementById("wipe").onclick = () => {
-    if (!confirm("Apagar perfil, refeições, pesos e chave? Isso não pode ser desfeito.")) return;
+  document.getElementById("wipe").onclick = async () => {
+    if (!(await askConfirm("Apagar perfil, refeições e pesos? Isso não pode ser desfeito.", "Apagar tudo"))) return;
     state = defaults(); save();
     draft = { name: "", goal: "", sex: "", age: "", height: "", weight: "", target: "", activity: "", pace: 0.5, obstacles: [], reminders: [] };
     step = 0; render();
@@ -851,6 +853,20 @@ function sheet(html, onBind) {
   bg.addEventListener("click", (e) => { if (e.target === bg) bg.remove(); });
   document.body.appendChild(bg);
   onBind?.(bg, () => bg.remove());
+}
+
+// Confirmação dentro da página (alguns visualizadores bloqueiam confirm()).
+function askConfirm(msg, okLabel) {
+  return new Promise((resolve) => {
+    sheet(`<h2>${esc(msg)}</h2>
+      <button class="btn" id="c-ok" style="background:var(--red)">${esc(okLabel)}</button>
+      <button class="link" id="c-no">Cancelar</button>`,
+    (el, close) => {
+      el.querySelector("#c-ok").onclick = () => { close(); resolve(true); };
+      el.querySelector("#c-no").onclick = () => { close(); resolve(false); };
+      el.addEventListener("click", (e) => { if (e.target === el) resolve(false); });
+    });
+  });
 }
 
 function openKeySheet(first) {
@@ -936,7 +952,7 @@ setInterval(() => {
   }
 }, 20000);
 
-if ("serviceWorker" in navigator) {
+if (AI.useServiceWorker && "serviceWorker" in navigator) {
   window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
 }
 

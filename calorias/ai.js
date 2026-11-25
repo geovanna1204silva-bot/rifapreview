@@ -4,6 +4,9 @@
 
 export class ScanError extends Error {}
 
+export const needsKey = true;
+export const useServiceWorker = true;
+
 const MODEL = "claude-opus-5-5";
 
 const SCHEMA = {

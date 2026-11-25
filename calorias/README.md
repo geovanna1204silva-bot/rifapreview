@@ -23,3 +23,7 @@ Tudo fica salvo só no aparelho (localStorage). A chave também: não compartilh
 
 Os lembretes só funcionam com o app aberto (notificações push exigiriam um servidor).
 As estimativas são gerais e não substituem orientação de nutricionista ou médico.
+
+## Versão no claude.ai (sem chave)
+
+`python3 calorias/build-artifact.py` gera `fotocal-artifact.html`, uma página única que roda dentro do claude.ai e usa o Claude da própria conta para analisar as fotos (não precisa de chave da API).
