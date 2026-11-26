@@ -1,6 +1,6 @@
 // FotoCal — contador de calorias por foto com plano personalizado.
-// Tudo fica salvo no próprio aparelho (localStorage), inclusive a conta
-// (e-mail + hash da senha). A análise das fotos usa a IA do Claude.
+// Tudo fica salvo no aparelho (localStorage), inclusive a conta (e-mail +
+// hash da senha); na versão do claude.ai também na conta do Claude.
 
 import * as AI from "./ai.js";
 const needKey = () => AI.needsKey && !AI.keyInfo.valid(state.apiKey);
@@ -20,30 +20,55 @@ const defaults = () => ({
   reminders: [],
   lastReminder: "",
 });
+// Camada de armazenamento: memória + localStorage. Na versão do claude.ai
+// (AI.cloud), cada gravação também vai para a conta do Claude, porque lá o
+// iPhone pode apagar a memória da página ao fechar o app.
+const kvCache = new Map();
+const kv = {
+  get(k) {
+    if (!kvCache.has(k)) {
+      let v = null;
+      try { v = localStorage.getItem(k); } catch (_) { /* sem armazenamento */ }
+      kvCache.set(k, v);
+    }
+    return kvCache.get(k);
+  },
+  set(k, v) {
+    kvCache.set(k, v);
+    let ok = true;
+    try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch (_) { ok = false; }
+    AI.cloud?.write(k, v);
+    return ok || !!AI.cloud;
+  },
+  // dados vindos da nuvem: atualiza aqui sem mandar de volta
+  fromCloud(k, v) {
+    kvCache.set(k, v);
+    try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch (_) { /* ignora */ }
+  },
+};
+
 let state = defaults();
 function load() {
   try {
-    const raw = KEY && localStorage.getItem(KEY);
+    const raw = KEY && kv.get(KEY);
     if (raw) return { ...defaults(), ...JSON.parse(raw) };
-  } catch (_) { /* sem armazenamento: segue em memória */ }
+  } catch (_) { /* dado corrompido: começa do zero */ }
   return defaults();
 }
 function save() {
   if (!KEY) return;
-  try { localStorage.setItem(KEY, JSON.stringify(state)); }
-  catch (_) { toast("Não foi possível salvar neste aparelho (memória cheia?)"); }
+  if (!kv.set(KEY, JSON.stringify(state))) toast("Não foi possível salvar neste aparelho (memória cheia?)");
 }
 
 /* =========================================================
    Conta (e-mail e senha, guardada só neste aparelho)
    ========================================================= */
 function readAccounts() {
-  try { return { users: {}, current: null, ...JSON.parse(localStorage.getItem(ACC_KEY) || "{}") }; }
+  try { return { users: {}, current: null, ...JSON.parse(kv.get(ACC_KEY) || "{}") }; }
   catch (_) { return { users: {}, current: null }; }
 }
 function writeAccounts(a) {
-  try { localStorage.setItem(ACC_KEY, JSON.stringify(a)); return true; }
-  catch (_) { return false; }
+  return kv.set(ACC_KEY, JSON.stringify(a));
 }
 const b64 = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf)));
 // A senha nunca é salva: guardamos só um hash PBKDF2 com sal aleatório.
@@ -568,10 +593,10 @@ function renderAuth() {
         a.current = email;
         // quem já usava o app antes das contas leva os dados para a primeira conta
         try {
-          const legacy = localStorage.getItem(LEGACY_KEY);
-          if (legacy && Object.keys(a.users).length === 1) {
-            localStorage.setItem(`${LEGACY_KEY}:${email}`, legacy);
-            localStorage.removeItem(LEGACY_KEY);
+          const legacy = kv.get(LEGACY_KEY);
+          if (legacy && Object.keys(a.users).length === 1 && !kv.get(`${LEGACY_KEY}:${email}`)) {
+            kv.set(`${LEGACY_KEY}:${email}`, legacy);
+            kv.set(LEGACY_KEY, null);
           }
         } catch (_) { /* ignora */ }
         if (!writeAccounts(a)) return fail("Não foi possível salvar a conta neste aparelho.");
@@ -1037,7 +1062,7 @@ function bindSettings() {
   document.getElementById("wipe").onclick = async () => {
     if (!(await askConfirm("Apagar sua conta, perfil, refeições e pesos? Isso não pode ser desfeito.", "Apagar tudo"))) return;
     const a = readAccounts();
-    try { localStorage.removeItem(KEY); } catch (_) { /* ignora */ }
+    kv.set(KEY, null);
     delete a.users[a.current];
     writeAccounts(a);
     authMode = "signup";
@@ -1155,9 +1180,15 @@ if (AI.useServiceWorker && "serviceWorker" in navigator) {
   window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
 }
 
-{
+function boot() {
   const a = readAccounts();
   if (a.current && a.users[a.current]) startSession(a.current);
   else authMode = Object.keys(a.users).length ? "login" : "signup";
+  render();
 }
-render();
+if (AI.cloud) {
+  $app.innerHTML = `<div class="ob" style="display:grid;place-items:center"><p class="sub">Carregando sua conta…</p></div>`;
+  AI.cloud.init(kv).then(boot, boot);
+} else {
+  boot();
+}

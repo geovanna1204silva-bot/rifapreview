@@ -17,7 +17,7 @@ app = (here / "app.js").read_text()
 
 # ai-claude-app.js vira um objeto AI no mesmo script
 ai = re.sub(r"^export ", "", ai, flags=re.M)
-ai += "\nconst AI = { ScanError, needsKey, useServiceWorker, keyInfo, analyzeFoodPhoto };\n"
+ai += "\nconst AI = { ScanError, needsKey, useServiceWorker, keyInfo, analyzeFoodPhoto, cloud };\n"
 app = app.replace('import * as AI from "./ai.js";', "")
 
 # No claude.ai o :root já é recuado pela área segura do topo.

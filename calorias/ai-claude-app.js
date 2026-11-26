@@ -84,3 +84,126 @@ function friendly(code) {
     default: return "Falha temporária ao analisar a foto. Tente novamente.";
   }
 }
+
+/* =========================================================
+   Cópia na nuvem (conta do Claude de quem usa)
+   Quando o claude.ai é aberto pelo ícone da tela inicial, o iPhone pode
+   apagar a memória da página ao fechar. Por isso a conta e os dados também
+   ficam no banco privado do artifact, em data/users/<id>/ (só a própria
+   pessoa lê e escreve ali).
+   Cada documento tem no máximo 256 KiB: o estado de cada conta é dividido
+   em "main" (perfil, pesos, ajustes) e um documento por mês de refeições,
+   sem as miniaturas das fotos.
+   ========================================================= */
+const capsReady = (window.claude?.use
+  ? Promise.all([window.claude.use("db"), window.claude.use("user")])
+  : Promise.resolve([null, null])).catch(() => [null, null]);
+
+const withTimeout = (p, ms) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error("timeout")), ms))]);
+const STATE_RE = /^fotocal:v1:(.+)$/;
+const safe = (s) => String(s).replace(/[^A-Za-z0-9_\-.~:@+]/g, "_").slice(0, 150);
+
+function partsFor(key, value) {
+  const m = key.match(STATE_RE);
+  if (!m) return { [`kv~${safe(key)}`]: { key, part: "whole", v: value } };
+  let st;
+  try { st = JSON.parse(value); } catch (_) { return { [`kv~${safe(key)}`]: { key, part: "whole", v: value } }; }
+  const base = `st~${safe(m[1])}`;
+  const { log = {}, ...main } = st;
+  const out = { [`${base}~main`]: { key, part: "main", v: JSON.stringify(main) } };
+  for (const [day, d] of Object.entries(log)) {
+    const month = day.slice(0, 7);
+    const id = `${base}~log~${month}`;
+    out[id] ??= { key, part: "log", month, days: {} };
+    out[id].days[day] = { ...d, meals: (d.meals || []).map(({ thumb, ...rest }) => rest) };
+  }
+  return out;
+}
+
+let col = null;
+const written = new Map();   // docId -> JSON escrito por último
+const docsByKey = new Map(); // key -> Set(docId)
+const pending = new Map();   // key -> valor a gravar
+let timer = null, chain = Promise.resolve();
+
+function flush() {
+  clearTimeout(timer); timer = null;
+  if (!col) return;
+  const batch = [...pending]; pending.clear();
+  for (const [key, value] of batch) {
+    const parts = value == null ? {} : partsFor(key, value);
+    const known = docsByKey.get(key) || new Set();
+    for (const id of known) {
+      if (!(id in parts)) chain = chain.then(() => col.doc(id).delete()).catch(() => {});
+    }
+    docsByKey.set(key, new Set(Object.keys(parts)));
+    for (const [id, body] of Object.entries(parts)) {
+      const json = JSON.stringify(body);
+      if (written.get(id) === json) continue;
+      written.set(id, json);
+      chain = chain.then(() => col.doc(id).set(body)).catch((e) => {
+        written.delete(id);
+        console.warn("FotoCal: não salvou na nuvem", id, e?.code);
+      });
+    }
+  }
+}
+document.addEventListener("visibilitychange", () => { if (document.hidden) flush(); });
+window.addEventListener("pagehide", flush);
+
+export const cloud = {
+  write(key, value) {
+    if (!key.startsWith("fotocal:")) return;
+    pending.set(key, value);
+    if (col) { clearTimeout(timer); timer = setTimeout(flush, 300); }
+  },
+  async init(kv) {
+    try {
+      const [db, user] = await withTimeout(capsReady, 10000);
+      const uid = db && user ? await user.id() : null;
+      if (!uid) return;
+      const c = db.collection(`data/users/${uid}`);
+      const snap = await withTimeout(c.get(), 12000);
+      // remonta os valores a partir dos documentos
+      const byKey = new Map();
+      for (const d of snap.docs) {
+        const body = d.data();
+        if (!body?.key) continue;
+        written.set(d.id, JSON.stringify(body));
+        if (!docsByKey.has(body.key)) docsByKey.set(body.key, new Set());
+        docsByKey.get(body.key).add(d.id);
+        const e = byKey.get(body.key) || { whole: null, main: null, log: {} };
+        if (body.part === "whole") e.whole = body.v;
+        if (body.part === "main") e.main = body.v;
+        if (body.part === "log") Object.assign(e.log, body.days || {});
+        byKey.set(body.key, e);
+      }
+      for (const [key, e] of byKey) {
+        if (e.whole !== null && e.main === null) { kv.fromCloud(key, e.whole); continue; }
+        if (e.main === null) continue;
+        let st;
+        try { st = JSON.parse(e.main); } catch (_) { continue; }
+        // mantém as miniaturas que este aparelho ainda tiver
+        let local = null;
+        try { local = JSON.parse(kv.get(key) || "null"); } catch (_) { /* ignora */ }
+        for (const [day, d] of Object.entries(e.log)) {
+          const ld = local?.log?.[day];
+          if (ld?.meals?.length === d.meals?.length) d.meals.forEach((m, i) => { if (ld.meals[i]?.name === m.name) m.thumb = ld.meals[i].thumb || ""; });
+        }
+        st.log = e.log;
+        kv.fromCloud(key, JSON.stringify(st));
+      }
+      // o que só existe neste aparelho sobe para a nuvem
+      try {
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i);
+          if (k?.startsWith("fotocal:") && !byKey.has(k)) pending.set(k, localStorage.getItem(k));
+        }
+      } catch (_) { /* sem localStorage */ }
+      col = c;
+      flush();
+    } catch (e) {
+      console.warn("FotoCal: nuvem indisponível, usando só o aparelho", e?.code || e?.message);
+    }
+  },
+};

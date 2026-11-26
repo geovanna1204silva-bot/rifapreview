@@ -9,6 +9,7 @@ export class ScanError extends Error {}
 
 export const needsKey = true;
 export const useServiceWorker = true;
+export const cloud = null; // sem cópia na nuvem: tudo fica no aparelho
 export const keyInfo = {
   provider: "Google, grátis",
   prefix: "AIza",

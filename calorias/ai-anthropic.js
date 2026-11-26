@@ -5,6 +5,7 @@
 export class ScanError extends Error {}
 
 export const needsKey = true;
+export const cloud = null;
 export const keyInfo = {
   provider: "Claude",
   prefix: "sk-ant-",
