@@ -213,9 +213,13 @@ h1, h2, h3 { color: var(--ink); margin: 0; letter-spacing: -.01em; }
 .qty input:focus-visible { outline: 2px solid var(--blue-2); border-radius: 4px; }
 .qty span { color: var(--muted); font-weight: 800; font-size: 13px; }
 .item button { color: var(--muted); font-size: 20px; padding: 4px 6px; }
-.portion { display: flex; gap: 8px; flex-wrap: wrap; }
-.portion button { padding: 8px 14px; border-radius: 99px; background: var(--blue-soft); color: var(--blue-3); font-weight: 800; }
-.portion button.on { background: var(--grad); color: #fff; }
+.portion { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.portion button { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left; padding: 12px 14px; border-radius: 18px; background: var(--blue-soft); color: var(--blue-3); min-width: 0; }
+.portion button b { font-size: 18px; font-weight: 900; }
+.portion button span { font-size: 13px; font-weight: 700; color: var(--muted); line-height: 1.3; }
+.portion button em { font-style: normal; font-size: 14px; font-weight: 900; color: var(--ink); margin-top: 2px; font-variant-numeric: tabular-nums; }
+.portion button.on { background: var(--grad); color: #fff; box-shadow: var(--shadow); }
+.portion button.on span, .portion button.on em { color: #fff; }
 .mealtypes { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
 .mealtypes button { padding: 10px 4px; border-radius: 16px; background: var(--blue-soft); color: var(--blue-3); font-weight: 800; font-size: 13px; }
 .mealtypes button.on { background: var(--grad); color: #fff; }

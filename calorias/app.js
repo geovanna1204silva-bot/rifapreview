@@ -791,8 +791,10 @@ function pageScan() {
           <span class="kc" id="kc-${i}">${fmt(scaled(it).kcal)}</span>
           <button data-rm="${i}" aria-label="Remover item">×</button></div>`).join("")}
       </div>
-      <div class="card"><h3>Porção do prato todo</h3>
-        <div class="portion">${[0.5, 0.75, 1, 1.25, 1.5, 2].map((v) => `<button data-por="${v}" class="${s.portion === v ? "on" : ""}">${String(v).replace(".", ",")}×</button>`).join("")}</div>
+      <div class="card"><h3>Quanto do prato você comeu?</h3>
+        <p class="help" style="margin:-4px 0 12px">Ajusta todos os itens de uma vez. Comeu tudo o que está na foto? Deixe no 1×.</p>
+        <div class="portion">${PORTIONS.map(([v, label]) => `<button data-por="${v}" class="${s.portion === v ? "on" : ""}">
+          <b>${String(v).replace(".", ",")}×</b><span>${label}</span><em>${fmt(baseKcal(r.itens) * v)} kcal</em></button>`).join("")}</div>
         <h3 style="margin-top:16px">Refeição</h3>
         <div class="mealtypes">${["Café da manhã", "Almoço", "Lanche", "Jantar"].map((m) => `<button data-mt="${m}" class="${s.type === m ? "on" : ""}">${m === "Café da manhã" ? "Café" : m}</button>`).join("")}</div>
       </div>
@@ -813,6 +815,17 @@ function pageScan() {
     ${needKey() ? `<div class="warn" style="margin-top:14px">Para analisar fotos, cadastre sua chave da IA em <b>Ajustes</b>. <button class="link" id="goto-key" style="display:inline;margin:0;padding:0;color:var(--blue-2)">Cadastrar agora</button></div>` : ""}
   </div>`;
 }
+
+const PORTIONS = [
+  [0.5, "Comeu só metade do prato"],
+  [0.75, "Deixou um pouco sobrando"],
+  [1, "Comeu o prato inteiro, como na foto"],
+  [1.25, "Repetiu um pouquinho"],
+  [1.5, "Repetiu meio prato"],
+  [2, "Comeu dois pratos iguais a esse"],
+];
+// calorias do prato como está na foto (antes de qualquer ajuste)
+const baseKcal = (items) => items.reduce((a, it) => a + it.base.kcal, 0);
 
 // Valores do item na quantidade atual (proporcional ao que a IA estimou).
 function scaled(it) {
