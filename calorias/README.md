@@ -10,15 +10,16 @@ Web app (PWA) em português que:
 
 1. Publique a pasta (por exemplo, GitHub Pages) e abra `.../calorias/` no Safari.
 2. Toque em **Compartilhar → Adicionar à Tela de Início** para instalar como app.
-3. Em **Ajustes**, cole sua chave da API da Anthropic (crie em https://console.anthropic.com/settings/keys; é preciso ter créditos).
+3. Cole a chave gratuita da IA do Google: crie em https://aistudio.google.com/apikey (não precisa de cartão).
 
 Tudo fica salvo só no aparelho (localStorage). A chave também: não compartilhe o link com a sua chave cadastrada no aparelho de outra pessoa.
 
 ## Arquivos
 
 - `index.html`, `styles.css`, `app.js`: interface, questionário, cálculos e diário
-- `ai.js`: chamada ao Claude (`claude-opus-5-5`) com saída em JSON estruturado
-- `vendor/anthropic-sdk-1.8.0.js`: SDK oficial `@anthropic-ai/sdk@1.8.0` empacotado para o navegador
+- `ai.js`: análise da foto com a IA do Google (Gemini, plano gratuito); descobre os modelos disponíveis para a chave e troca de modelo se a cota diária acabar
+- `ai-anthropic.js` + `vendor/anthropic-sdk-1.8.0.js`: alternativa paga com o Claude (`claude-opus-5-5`); para usar, troque o import em `app.js`
+- `ai-claude-app.js`: IA da versão publicada no claude.ai (usa a conta do Claude)
 - `sw.js`, `manifest.webmanifest`, `icons/`: instalação como app e funcionamento offline
 
 Os lembretes só funcionam com o app aberto (notificações push exigiriam um servidor).

@@ -1,5 +1,5 @@
 // Cache simples para o app abrir mesmo sem internet (a análise de fotos precisa de conexão).
-const CACHE = "fotocal-v1";
+const CACHE = "fotocal-v2";
 const FILES = ["./", "index.html", "styles.css", "app.js", "ai.js", "manifest.webmanifest",
   "icons/icon.svg", "icons/icon-180.png", "icons/icon-192.png", "icons/icon-512.png",
   "vendor/anthropic-sdk-1.8.0.js"];

@@ -3,7 +3,7 @@
 // (e-mail + hash da senha). A análise das fotos usa a IA do Claude.
 
 import * as AI from "./ai.js";
-const needKey = () => AI.needsKey && !state.apiKey;
+const needKey = () => AI.needsKey && !AI.keyInfo.valid(state.apiKey);
 
 /* =========================================================
    Armazenamento
@@ -774,7 +774,7 @@ function pageScan() {
     </div>
     ${s.status !== "busy" ? `<div class="row-btns"><button class="btn" id="b-cam">📷 Câmera</button><button class="btn ghost" id="b-gal">🖼️ Galeria</button></div>` : ""}
     ${s.error ? `<div class="err">${esc(s.error)}</div>` : ""}
-    ${needKey() ? `<div class="warn" style="margin-top:14px">Para analisar fotos, cadastre sua chave da API do Claude em <b>Ajustes</b>. <button class="link" id="goto-key" style="display:inline;margin:0;padding:0;color:var(--blue-2)">Cadastrar agora</button></div>` : ""}
+    ${needKey() ? `<div class="warn" style="margin-top:14px">Para analisar fotos, cadastre sua chave da IA em <b>Ajustes</b>. <button class="link" id="goto-key" style="display:inline;margin:0;padding:0;color:var(--blue-2)">Cadastrar agora</button></div>` : ""}
   </div>`;
 }
 
@@ -957,9 +957,9 @@ function pageSettings() {
   const goal = { perder: "Perder peso", manter: "Manter", ganhar: "Ganhar peso" }[p.goal];
   return `<div class="page">
     <div class="page-h"><h1>Ajustes</h1></div>
-    ${AI.needsKey ? `<div class="card"><h3>Chave da IA (Claude)</h3>
-      <p class="help" style="margin-top:0">${state.apiKey ? "✅ Chave cadastrada: …" + esc(state.apiKey.slice(-4)) : "Nenhuma chave cadastrada — necessária para analisar fotos."}</p>
-      <button class="btn small" id="key">${state.apiKey ? "Trocar chave" : "Cadastrar chave"}</button>
+    ${AI.needsKey ? `<div class="card"><h3>Chave da IA (${AI.keyInfo.provider})</h3>
+      <p class="help" style="margin-top:0">${AI.keyInfo.valid(state.apiKey) ? "✅ Chave cadastrada: …" + esc(state.apiKey.slice(-4)) : "Nenhuma chave cadastrada — necessária para analisar fotos."}</p>
+      <button class="btn small" id="key">${AI.keyInfo.valid(state.apiKey) ? "Trocar chave" : "Cadastrar chave"}</button>
     </div>` : ""}
     <div class="card"><h3>Meu perfil</h3>
       <div class="set-row">Objetivo <span>${goal}</span></div>
@@ -1030,19 +1030,18 @@ function askConfirm(msg, okLabel) {
 }
 
 function openKeySheet(first) {
-  sheet(`<h2>${first ? "Último passo: ativar a IA" : "Chave da API do Claude"}</h2>
-    <p class="help">O reconhecimento de comida usa o Claude, da Anthropic. Crie uma chave em
-      <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a>
-      (é preciso adicionar créditos; cada foto custa poucos centavos) e cole aqui. A chave fica salva só neste aparelho — não compartilhe o app com ela cadastrada.</p>
-    <div class="field"><label>Chave (começa com sk-ant-)</label>
-      <input type="password" id="k-in" placeholder="sk-ant-..." autocomplete="off" value="${esc(state.apiKey)}"></div>
+  const K = AI.keyInfo;
+  sheet(`<h2>${first ? "Último passo: ativar a IA" : `Chave da IA (${K.provider})`}</h2>
+    <p class="help">${K.help}</p>
+    <div class="field"><label for="k-in">Chave (começa com ${K.prefix})</label>
+      <input type="password" id="k-in" placeholder="${K.prefix}..." autocomplete="off" autocapitalize="off" spellcheck="false" value="${esc(K.valid(state.apiKey) ? state.apiKey : "")}"></div>
     <button class="btn" id="k-save">Salvar chave</button>
     <button class="link" id="k-close">${first ? "Fazer depois" : "Cancelar"}</button>`,
   (el, close) => {
     el.querySelector("#k-close").onclick = close;
     el.querySelector("#k-save").onclick = () => {
       const v = el.querySelector("#k-in").value.trim();
-      if (v && !v.startsWith("sk-ant-")) return toast("A chave deve começar com sk-ant-");
+      if (v && !K.valid(v)) return toast(`A chave deve começar com ${K.prefix}`);
       state.apiKey = v; save(); close(); render();
       toast(v ? "🔑 Chave salva" : "Chave removida");
     };

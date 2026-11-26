@@ -5,6 +5,7 @@
 export class ScanError extends Error {}
 
 export const needsKey = false;
+export const keyInfo = { provider: "Claude", prefix: "", valid: () => true, help: "" };
 export const useServiceWorker = false;
 
 const sampleReady = (window.claude?.use ? window.claude.use("sample") : Promise.resolve(null)).catch(() => null);
