@@ -523,6 +523,7 @@ function trajectoryChart(from, to, l1, l2) {
    Tela de criar conta / entrar
    ========================================================= */
 let authMode = "signup";
+let pendingEmail = "";
 function renderAuth() {
   const signup = authMode === "signup";
   $app.innerHTML = `<div class="ob auth">
@@ -532,7 +533,7 @@ function renderAuth() {
       <p class="sub">${signup ? "Coloque seu e-mail e crie uma senha para começar." : "Use o e-mail e a senha da sua conta."}</p>
       <form id="auth-form" novalidate>
         <div class="field"><label for="a-email">E-mail</label>
-          <input type="text" inputmode="email" id="a-email" autocomplete="email" autocapitalize="off" spellcheck="false" placeholder="voce@email.com"></div>
+          <input type="text" inputmode="email" id="a-email" autocomplete="email" autocapitalize="off" spellcheck="false" placeholder="voce@email.com" value="${esc(pendingEmail)}"></div>
         <div class="field"><label for="a-pass">Senha</label>
           <input type="password" id="a-pass" autocomplete="${signup ? "new-password" : "current-password"}" placeholder="${signup ? "Mínimo 6 caracteres" : "Sua senha"}"></div>
         ${signup ? `<div class="field"><label for="a-pass2">Confirme a senha</label>
@@ -578,7 +579,15 @@ function renderAuth() {
         step = 0;
       } else {
         const u = a.users[email];
-        if (!u) return fail("Não encontramos conta com esse e-mail neste aparelho.");
+        if (!u) {
+          fail("Não encontramos essa conta aqui. Cada lugar onde o app é aberto (Safari, ícone da tela inicial, link do Claude) guarda suas próprias contas. Se você criou a conta em outro lugar, abra o app por lá. Ou crie a conta aqui:");
+          const mk = document.createElement("button");
+          mk.type = "button"; mk.className = "btn ghost small"; mk.style.marginTop = "10px";
+          mk.textContent = "Criar conta com este e-mail";
+          mk.onclick = () => { authMode = "signup"; pendingEmail = email; renderAuth(); };
+          err.append(document.createElement("br"), mk);
+          return;
+        }
         const { hash } = await hashPassword(pass, u.salt);
         if (hash !== u.hash) return fail("Senha incorreta.");
         a.current = email;
