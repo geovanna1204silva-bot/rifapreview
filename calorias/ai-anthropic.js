@@ -29,11 +29,12 @@ const SCHEMA = {
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["nome", "porcao_estimada", "gramas", "calorias", "proteina_g", "carboidratos_g", "gorduras_g"],
+        required: ["nome", "porcao_estimada", "gramas", "unidade", "calorias", "proteina_g", "carboidratos_g", "gorduras_g"],
         properties: {
           nome: { type: "string" },
           porcao_estimada: { type: "string", description: "Medida caseira, ex.: '4 colheres de sopa', '1 filé médio'" },
-          gramas: { type: "number" },
+          gramas: { type: "number", description: "Quantidade do item, na unidade abaixo" },
+          unidade: { type: "string", enum: ["g", "ml"], description: "ml para bebidas e líquidos, g para o resto" },
           calorias: { type: "number" },
           proteina_g: { type: "number" },
           carboidratos_g: { type: "number" },
@@ -48,7 +49,8 @@ const SCHEMA = {
 const SYSTEM = `Você é um nutricionista que estima calorias a partir de fotos de refeições, para um app brasileiro de contagem de calorias.
 Identifique cada alimento visível separadamente, estime a porção pelo tamanho do prato, talheres e outros objetos de referência, e calcule calorias e macronutrientes com base em tabelas como a TACO e a USDA.
 Considere preparos típicos brasileiros (arroz branco, feijão carioca, farofa, óleo de cozimento) quando forem os mais prováveis.
-Seja realista: não subestime óleo, manteiga, molhos e frituras. Arredonde calorias para inteiros e macros para uma casa decimal.
+Seja realista: não subestime óleo, manteiga, molhos e frituras.
+Se a foto for de um rótulo ou tabela nutricional, use os valores impressos para a porção indicada nele. Arredonde calorias para inteiros e macros para uma casa decimal.
 Escreva tudo em português do Brasil. Se a foto não mostrar comida, retorne e_comida=false, itens vazio e explique em observacao.`;
 
 let sdkPromise;
@@ -101,6 +103,7 @@ export async function analyzeFoodPhoto({ apiKey, dataUrl, profile }) {
   parsed.itens = (parsed.itens || []).map((it) => ({
     ...it,
     gramas: Math.max(0, +it.gramas || 0),
+    unidade: it.unidade === "ml" ? "ml" : "g",
     calorias: Math.max(0, +it.calorias || 0),
     proteina_g: Math.max(0, +it.proteina_g || 0),
     carboidratos_g: Math.max(0, +it.carboidratos_g || 0),

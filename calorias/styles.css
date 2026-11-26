@@ -206,7 +206,12 @@ h1, h2, h3 { color: var(--ink); margin: 0; letter-spacing: -.01em; }
 .item .it { flex: 1; min-width: 0; }
 .item .it b { display: block; color: var(--ink); font-weight: 800; }
 .item .it span { color: var(--muted); font-size: 13px; font-weight: 600; }
-.item .kc { font-weight: 900; color: var(--ink); }
+.item .kc { font-weight: 900; color: var(--ink); min-width: 3ch; text-align: right; font-variant-numeric: tabular-nums; }
+.qty { display: flex; align-items: center; gap: 4px; background: var(--blue-soft); border-radius: 12px; padding: 4px 8px; flex: none; }
+.qty input { width: 4.2ch; border: 0; outline: 0; background: transparent; font-weight: 900; color: var(--blue-3); font-size: 16px; text-align: right; padding: 0; -moz-appearance: textfield; }
+.qty input::-webkit-outer-spin-button, .qty input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.qty input:focus-visible { outline: 2px solid var(--blue-2); border-radius: 4px; }
+.qty span { color: var(--muted); font-weight: 800; font-size: 13px; }
 .item button { color: var(--muted); font-size: 20px; padding: 4px 6px; }
 .portion { display: flex; gap: 8px; flex-wrap: wrap; }
 .portion button { padding: 8px 14px; border-radius: 99px; background: var(--blue-soft); color: var(--blue-3); font-weight: 800; }

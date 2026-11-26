@@ -738,24 +738,26 @@ function pageScan() {
 
   if (s.status === "done" && s.result) {
     const r = s.result;
-    const t = itemsTotal(r.itens, s.portion);
+    const t = itemsTotal(r.itens);
     return `<div class="page">
       <div class="page-h"><h1>${esc(r.prato || "Resultado")}</h1></div>
       ${box}
       ${r.observacao ? `<div class="warn" style="margin-top:14px">💡 ${esc(r.observacao)}</div>` : ""}
       <div class="card" style="margin-top:14px">
-        <div class="result-total"><b>${fmt(t.kcal)}</b><span>kcal</span></div>
+        <div class="result-total"><b id="t-kcal">${fmt(t.kcal)}</b><span>kcal</span></div>
         <div class="macros" style="margin:8px 0 6px">
-          <div class="macro"><small>Proteína</small><b>${fmt(t.p)} <em>g</em></b></div>
-          <div class="macro"><small>Carbo</small><b>${fmt(t.c)} <em>g</em></b></div>
-          <div class="macro"><small>Gordura</small><b>${fmt(t.f)} <em>g</em></b></div>
+          <div class="macro"><small>Proteína</small><b><span id="t-p">${fmt(t.p)}</span> <em>g</em></b></div>
+          <div class="macro"><small>Carbo</small><b><span id="t-c">${fmt(t.c)}</span> <em>g</em></b></div>
+          <div class="macro"><small>Gordura</small><b><span id="t-f">${fmt(t.f)}</span> <em>g</em></b></div>
         </div>
+        <p class="help" style="margin:4px 0 0">Comeu outra quantidade? Toque no número e corrija.</p>
         ${r.itens.map((it, i) => `<div class="item">
-          <div class="it"><b>${esc(it.nome)}</b><span>${esc(it.porcao_estimada)} · ~${fmt(it.gramas * s.portion)} g</span></div>
-          <span class="kc">${fmt(it.calorias * s.portion)}</span>
+          <div class="it"><b>${esc(it.nome)}</b><span>${esc(it.porcao_estimada)}</span></div>
+          ${it.base.g > 0 ? `<label class="qty"><input type="number" inputmode="decimal" min="0" step="any" data-qty="${i}" id="qty-${i}" value="${Math.round(it.gramas)}" aria-label="Quantidade de ${esc(it.nome)} em ${it.unidade}"><span>${it.unidade}</span></label>` : ""}
+          <span class="kc" id="kc-${i}">${fmt(scaled(it).kcal)}</span>
           <button data-rm="${i}" aria-label="Remover item">×</button></div>`).join("")}
       </div>
-      <div class="card"><h3>Porção</h3>
+      <div class="card"><h3>Porção do prato todo</h3>
         <div class="portion">${[0.5, 0.75, 1, 1.25, 1.5, 2].map((v) => `<button data-por="${v}" class="${s.portion === v ? "on" : ""}">${String(v).replace(".", ",")}×</button>`).join("")}</div>
         <h3 style="margin-top:16px">Refeição</h3>
         <div class="mealtypes">${["Café da manhã", "Almoço", "Lanche", "Jantar"].map((m) => `<button data-mt="${m}" class="${s.type === m ? "on" : ""}">${m === "Café da manhã" ? "Café" : m}</button>`).join("")}</div>
@@ -778,11 +780,23 @@ function pageScan() {
   </div>`;
 }
 
-function itemsTotal(items, k = 1) {
-  return items.reduce((a, it) => ({
-    kcal: a.kcal + it.calorias * k, p: a.p + it.proteina_g * k,
-    c: a.c + it.carboidratos_g * k, f: a.f + it.gorduras_g * k,
-  }), { kcal: 0, p: 0, c: 0, f: 0 });
+// Valores do item na quantidade atual (proporcional ao que a IA estimou).
+function scaled(it) {
+  const k = it.base.g > 0 ? it.gramas / it.base.g : 1;
+  return { kcal: it.base.kcal * k, p: it.base.p * k, c: it.base.c * k, f: it.base.f * k };
+}
+function itemsTotal(items) {
+  return items.reduce((a, it) => {
+    const v = scaled(it);
+    return { kcal: a.kcal + v.kcal, p: a.p + v.p, c: a.c + v.c, f: a.f + v.f };
+  }, { kcal: 0, p: 0, c: 0, f: 0 });
+}
+function withBase(result) {
+  result.itens.forEach((it) => {
+    it.unidade = it.unidade === "ml" ? "ml" : "g";
+    it.base = { g: it.gramas, kcal: it.calorias, p: it.proteina_g, c: it.carboidratos_g, f: it.gorduras_g };
+  });
+  return result;
 }
 
 function bindScan() {
@@ -798,14 +812,32 @@ function bindScan() {
   const gk = document.getElementById("goto-key"); if (gk) gk.onclick = () => openKeySheet(false);
   [cam, gal].forEach((inp) => inp.onchange = () => { if (inp.files[0]) handlePhoto(inp.files[0]); });
 
-  document.querySelectorAll("[data-por]").forEach((b) => b.onclick = () => { scan.portion = +b.dataset.por; render(); });
+  document.querySelectorAll("[data-por]").forEach((b) => b.onclick = () => {
+    scan.portion = +b.dataset.por;
+    scan.result.itens.forEach((it) => { it.gramas = it.base.g * scan.portion; });
+    render();
+  });
+  // editar a quantidade de um item: atualiza os números sem redesenhar a tela
+  document.querySelectorAll("[data-qty]").forEach((inp) => inp.addEventListener("input", () => {
+    const it = scan.result.itens[+inp.dataset.qty];
+    const v = parseFloat(inp.value.replace(",", "."));
+    it.gramas = v >= 0 ? v : 0;
+    document.getElementById("kc-" + inp.dataset.qty).textContent = fmt(scaled(it).kcal);
+    const t = itemsTotal(scan.result.itens);
+    document.getElementById("t-kcal").textContent = fmt(t.kcal);
+    document.getElementById("t-p").textContent = fmt(t.p);
+    document.getElementById("t-c").textContent = fmt(t.c);
+    document.getElementById("t-f").textContent = fmt(t.f);
+    scan.portion = null;
+    document.querySelectorAll("[data-por]").forEach((b) => b.classList.remove("on"));
+  }));
   document.querySelectorAll("[data-mt]").forEach((b) => b.onclick = () => { scan.type = b.dataset.mt; render(); });
   document.querySelectorAll("[data-rm]").forEach((b) => b.onclick = () => { scan.result.itens.splice(+b.dataset.rm, 1); render(); });
   const again = document.getElementById("again");
   if (again) again.onclick = () => { scan = null; render(); };
   const sv = document.getElementById("save-meal");
   if (sv) sv.onclick = async () => {
-    const r = scan.result, t = itemsTotal(r.itens, scan.portion);
+    const r = scan.result, t = itemsTotal(r.itens);
     const now = new Date();
     day().meals.push({
       name: r.prato || r.itens.map((i) => i.nome).join(", "),
@@ -831,7 +863,7 @@ async function handlePhoto(file) {
     if (!result.e_comida || !result.itens.length) {
       scan = { ...scan, status: "idle", error: result.observacao || "Não identifiquei comida nessa foto. Tente fotografar o prato de cima, com boa luz." };
     } else {
-      scan = { ...scan, status: "done", result, portion: 1 };
+      scan = { ...scan, status: "done", result: withBase(result), portion: 1 };
     }
   } catch (e) {
     console.error(e);

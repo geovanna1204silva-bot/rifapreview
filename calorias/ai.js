@@ -26,11 +26,13 @@ A imagem anexada é a foto de uma refeição.
 Identifique cada alimento visível separadamente, estime a porção pelo tamanho do prato, talheres e outros objetos de referência, e calcule calorias e macronutrientes com base em tabelas como a TACO e a USDA.
 Considere preparos típicos brasileiros (arroz branco, feijão carioca, farofa, óleo de cozimento) quando forem os mais prováveis.
 Seja realista: não subestime óleo, manteiga, molhos e frituras.
+"gramas" é a quantidade do item; use "unidade": "ml" para bebidas e líquidos e "g" para o resto.
+Se a foto for de um rótulo ou tabela nutricional, use os valores impressos para a porção indicada nele.
 Escreva tudo em português do Brasil.
 
 Responda SOMENTE com um objeto JSON neste formato:
 {"e_comida": true, "prato": "Frango com arroz e feijão", "observacao": "dica curta ou ressalva, ou vazio",
- "itens": [{"nome": "Arroz branco", "porcao_estimada": "4 colheres de sopa", "gramas": 100, "calorias": 128, "proteina_g": 2.5, "carboidratos_g": 28.1, "gorduras_g": 0.2}]}
+ "itens": [{"nome": "Arroz branco", "porcao_estimada": "4 colheres de sopa", "gramas": 100, "unidade": "g", "calorias": 128, "proteina_g": 2.5, "carboidratos_g": 28.1, "gorduras_g": 0.2}]}
 
 Se a foto não mostrar comida, responda {"e_comida": false, "prato": "", "itens": [], "observacao": "<explique>"}.`;
 
@@ -144,6 +146,7 @@ function normalize(parsed) {
     itens: (Array.isArray(parsed.itens) ? parsed.itens : []).map((it) => ({
       nome: String(it?.nome || "Alimento"),
       porcao_estimada: String(it?.porcao_estimada || ""),
+      unidade: it?.unidade === "ml" ? "ml" : "g",
       gramas: Math.max(0, +it?.gramas || 0),
       calorias: Math.max(0, +it?.calorias || 0),
       proteina_g: Math.max(0, +it?.proteina_g || 0),
