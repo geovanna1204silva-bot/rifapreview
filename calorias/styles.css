@@ -118,6 +118,17 @@ h1, h2, h3 { color: var(--ink); margin: 0; letter-spacing: -.01em; }
 .stat.big b { font-size: 38px; }
 .note { font-size: 13px; color: var(--muted); margin-top: 16px; line-height: 1.45; }
 
+.eq { background: #fff; border-radius: var(--radius); padding: 18px; box-shadow: var(--shadow-soft); margin-top: 14px; }
+.card.eq { margin-top: 0; }
+.eq h3 { font-size: 18px; font-weight: 900; margin-bottom: 8px; }
+.eq-row { display: flex; justify-content: space-between; gap: 12px; padding: 9px 0; font-weight: 700; color: var(--muted); font-variant-numeric: tabular-nums; }
+.eq-row b { color: var(--ink); font-weight: 900; white-space: nowrap; }
+.eq-row.total { border-top: 2px solid var(--ink); margin-top: 2px; padding-top: 11px; color: var(--ink); font-weight: 900; }
+.eq-row.total b { color: var(--green); font-size: 20px; }
+.eq-row.total.bad b { color: var(--red); }
+.eq p { margin: 10px 0 0; color: var(--muted); font-size: 15px; line-height: 1.5; }
+.eq p b { color: var(--ink); }
+
 /* ---------- App shell ---------- */
 .page { padding: calc(18px + var(--safe-t)) 18px calc(120px + var(--safe-b)); }
 .page-h { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }

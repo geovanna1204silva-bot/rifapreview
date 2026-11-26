@@ -306,16 +306,15 @@ function renderOnboarding() {
       const plan = computePlan(p);
       const goalTxt = p.goal === "manter" ? "manter seu peso" : `${p.goal === "perder" ? "perder" : "ganhar"} ${fmt(plan.diff, 1)} kg`;
       body = `<h1>${p.name ? esc(p.name) + ", seu" : "Seu"} plano está pronto! 🎉</h1>
-        <p class="sub">Para ${goalTxt}${plan.weeks ? ` até <b>${plan.date.toLocaleDateString("pt-BR", { day: "numeric", month: "long" })}</b>` : ""}, sua meta diária é:</p>
+        <p class="sub">Para ${goalTxt}${plan.weeks ? ` até <b>${plan.date.toLocaleDateString("pt-BR", { day: "numeric", month: "long" })}</b>` : ""}, você deve comer:</p>
         <div class="plan-grid">
-          <div class="stat big"><small>Meta diária de calorias</small><b>${fmt(plan.kcal)} <em>kcal</em></b></div>
-          <div class="stat"><small>Você gasta por dia</small><b>${fmt(plan.tdee)} <em>kcal</em></b></div>
-          <div class="stat"><small>${p.goal === "ganhar" ? "Superávit diário" : "Déficit diário"}</small><b>${fmt(Math.abs(plan.deficit))} <em>kcal</em></b></div>
+          <div class="stat big"><small>Coma por dia</small><b>${fmt(plan.kcal)} <em>kcal</em></b></div>
           <div class="stat"><small>${p.goal === "ganhar" ? "Falta ganhar" : "Falta perder"}</small><b>${fmt(plan.diff, 1)} <em>kg</em></b></div>
           <div class="stat"><small>Água</small><b>${fmt(plan.water)} <em>ml</em></b></div>
           <div class="stat"><small>Proteína</small><b>${plan.protein} <em>g</em></b></div>
           <div class="stat"><small>Carbo · Gordura</small><b>${plan.carbs}<em>g</em> · ${plan.fat}<em>g</em></b></div>
         </div>
+        ${deficitCard(p, plan)}
         <p class="note">Gasto basal (Mifflin-St Jeor): ${fmt(plan.bmr)} kcal · IMC atual: ${fmt(plan.bmi, 1)}. Estimativas gerais, não substituem orientação de nutricionista ou médico — especialmente se você tem alguma condição de saúde, está grávida ou amamentando.</p>`;
       foot = `<button class="btn" id="finish">Começar a usar ${ICON.arrow}</button>`;
       break;
@@ -425,6 +424,43 @@ function validStep(s) {
   }
 }
 
+// A conta do déficit em linguagem simples: gasta − come = déficit.
+// eaten: quanto já comeu hoje (só na tela Hoje); sem ele mostra o plano.
+function deficitCard(p, plan, eaten) {
+  const gain = p.goal === "ganhar", keep = p.goal === "manter";
+  const word = gain ? "superávit" : "déficit";
+  const weekKg = (Math.abs(plan.deficit) * 7) / 7700;
+  if (eaten === undefined) {
+    const explain = keep
+      ? `Comendo o mesmo que gasta, seu peso fica estável.`
+      : gain
+        ? `Comendo <b>${fmt(Math.abs(plan.deficit))} kcal a mais</b> do que gasta, todo dia, você ganha cerca de <b>${fmt(weekKg, 2)} kg por semana</b>.`
+        : `Comendo <b>${fmt(plan.kcal)} kcal</b>, faltam <b>${fmt(plan.deficit)} kcal</b> para o que seu corpo gasta. Ele tira essa diferença da gordura guardada: ${fmt(plan.deficit)} × 7 dias = ${fmt(plan.deficit * 7)} kcal por semana ≈ <b>${fmt(weekKg, 2)} kg a menos por semana</b> (1 kg de gordura ≈ 7.700 kcal).`;
+    return `<div class="eq">
+      <h3>${keep ? "Sua conta do dia" : `Sua conta do ${word}`}</h3>
+      <div class="eq-row"><span>🔥 Seu corpo gasta por dia</span><b>${fmt(plan.tdee)} kcal</b></div>
+      <div class="eq-row"><span>🍽️ Você deve comer por dia</span><b>${gain ? "" : "− "}${fmt(plan.kcal)} kcal</b></div>
+      <div class="eq-row total"><span>= ${keep ? "Diferença" : word[0].toUpperCase() + word.slice(1) + " por dia"}</span><b>${fmt(Math.abs(plan.deficit))} kcal</b></div>
+      <p>${explain}</p>
+      ${!keep && !gain ? `<p>Quer comer mais? Exercício aumenta o gasto: 30 min de caminhada (~150 kcal) deixam você comer ~150 kcal a mais com o mesmo déficit.</p>` : ""}
+    </div>`;
+  }
+  const now = plan.tdee - eaten; // positivo = déficit
+  let msg;
+  if (gain) msg = eaten >= plan.kcal ? `✅ Meta batida: superávit de ${fmt(eaten - plan.tdee)} kcal.` : `Coma mais ${fmt(plan.kcal - eaten)} kcal para chegar ao superávit de ${fmt(Math.abs(plan.deficit))}.`;
+  else if (keep) msg = eaten <= plan.kcal ? `Ainda pode comer ${fmt(plan.kcal - eaten)} kcal hoje.` : `Passou ${fmt(eaten - plan.kcal)} kcal do que gasta.`;
+  else if (eaten <= plan.kcal) msg = `✅ Dentro do plano. Pode comer mais <b>${fmt(plan.kcal - eaten)} kcal</b> e ainda terá o déficit de ${fmt(plan.deficit)} kcal.`;
+  else if (now > 0) msg = `⚠️ Passou da meta de comer, mas ainda tem déficit de ${fmt(now)} kcal (o plano era ${fmt(plan.deficit)}).`;
+  else msg = `⚠️ Hoje você comeu ${fmt(-now)} kcal a mais do que seu corpo gasta: sem déficit hoje.`;
+  return `<div class="card eq">
+      <h3>${keep ? "Sua conta de hoje" : `Seu ${word} de hoje`}</h3>
+      <div class="eq-row"><span>🔥 Seu corpo gasta hoje</span><b>${fmt(plan.tdee)} kcal</b></div>
+      <div class="eq-row"><span>🍽️ Você comeu</span><b>− ${fmt(eaten)} kcal</b></div>
+      <div class="eq-row total ${now < 0 && !gain ? "bad" : ""}"><span>= ${now >= 0 ? "Déficit" : "Superávit"} até agora</span><b>${fmt(Math.abs(now))} kcal</b></div>
+      <p>${msg}</p>
+    </div>`;
+}
+
 function trajectoryChart(from, to, l1, l2) {
   // curva suave de "agora" até a meta (estilo da tela de projeção)
   const down = to < from;
@@ -508,16 +544,18 @@ function pageToday() {
             <circle cx="75" cy="75" r="${R}" fill="none" stroke="#e3ecfd" stroke-width="14"/>
             <circle cx="75" cy="75" r="${R}" fill="none" stroke="${over ? "#e5484d" : "url(#rg)"}" stroke-width="14" stroke-linecap="round" stroke-dasharray="${C}" stroke-dashoffset="${C * (1 - ratio)}"/>
           </svg>
-          <div class="c"><b>${fmt(Math.abs(left))}</b><small>${over ? "kcal acima" : "kcal restantes"}</small></div>
+          <div class="c"><b>${fmt(Math.abs(left))}</b><small>${over ? "kcal acima da meta" : "kcal para comer"}</small></div>
         </div>
         <div class="ring-side">
-          <div class="kv">Meta <b>${fmt(plan.kcal)}</b></div>
-          <div class="kv">Consumido <b>${fmt(t.kcal)}</b></div>
-          <div class="kv">${p.goal === "ganhar" ? "Superávit" : "Déficit"} <b>${fmt(Math.abs(plan.deficit))}</b></div>
+          <div class="kv">Comer hoje <b>${fmt(plan.kcal)}</b></div>
+          <div class="kv">Já comeu <b>${fmt(t.kcal)}</b></div>
+          <div class="kv">Corpo gasta <b>${fmt(plan.tdee)}</b></div>
           <div class="kv">${p.goal === "ganhar" ? "Falta ganhar" : p.goal === "perder" ? "Falta perder" : "Peso"} <b>${p.goal === "manter" ? fmt(currentWeight(), 1) : fmt(Math.abs(currentWeight() - p.target), 1)} kg</b></div>
         </div>
       </div>
     </div>
+
+    ${deficitCard(p, plan, t.kcal)}
 
     <div class="card">
       <div class="macros">
@@ -920,16 +958,15 @@ function openPlanSheet() {
   const p = state.profile, plan = computePlan({ ...p, weight: currentWeight() });
   sheet(`<h2>Seu plano</h2>
     <div class="plan-grid" style="margin-top:0">
-      <div class="stat big"><small>Meta diária</small><b>${fmt(plan.kcal)} <em>kcal</em></b></div>
-      <div class="stat"><small>Gasto diário</small><b>${fmt(plan.tdee)} <em>kcal</em></b></div>
-      <div class="stat"><small>Gasto basal</small><b>${fmt(plan.bmr)} <em>kcal</em></b></div>
-      <div class="stat"><small>${p.goal === "ganhar" ? "Superávit" : "Déficit"}</small><b>${fmt(Math.abs(plan.deficit))} <em>kcal</em></b></div>
+      <div class="stat big"><small>Coma por dia</small><b>${fmt(plan.kcal)} <em>kcal</em></b></div>
       <div class="stat"><small>${p.goal === "ganhar" ? "Falta ganhar" : "Falta perder"}</small><b>${fmt(plan.diff, 1)} <em>kg</em></b></div>
       <div class="stat"><small>Previsão</small><b style="font-size:18px">${plan.weeks ? plan.date.toLocaleDateString("pt-BR", { day: "numeric", month: "short", year: "numeric" }) : "—"}</b></div>
       <div class="stat"><small>IMC</small><b>${fmt(plan.bmi, 1)}</b></div>
       <div class="stat"><small>Proteína</small><b>${plan.protein} <em>g</em></b></div>
       <div class="stat"><small>Carbo · Gordura</small><b>${plan.carbs}<em>g</em> · ${plan.fat}<em>g</em></b></div>
+      <div class="stat"><small>Gasto basal (em repouso)</small><b>${fmt(plan.bmr)} <em>kcal</em></b></div>
     </div>
+    ${deficitCard(p, plan)}
     ${p.goal !== "manter" ? trajectoryChart(currentWeight(), p.target, "Agora", "Meta") : ""}
     <p class="note">Estimativas pela fórmula de Mifflin-St Jeor. Não substituem orientação profissional.</p>
     <button class="btn" id="p-close" style="margin-top:12px">Fechar</button>`,
