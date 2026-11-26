@@ -684,7 +684,7 @@ async function handlePhoto(file) {
     }
   } catch (e) {
     console.error(e);
-    scan = { ...scan, status: "idle", error: e instanceof AI.ScanError ? e.message : "Não foi possível ler essa imagem. Tente outra foto." };
+    scan = { ...scan, status: "idle", error: e instanceof AI.ScanError ? e.message : `Não foi possível ler essa imagem. Tente outra foto. (detalhe: ${String(e?.message || e).slice(0, 120)})` };
   }
   if (tab === "escanear") render();
 }

@@ -22,25 +22,33 @@ Responda SOMENTE com um objeto JSON neste formato:
 
 Se a foto não mostrar comida, responda {"e_comida": false, "prato": "", "itens": [], "observacao": "<explique>"}.`;
 
-async function dataUrlToBlob(dataUrl) {
-  return (await fetch(dataUrl)).blob();
+// Converte sem fetch(): a página publicada não pode fazer requisições, nem para data: URLs.
+function dataUrlToBlob(dataUrl) {
+  const [head, b64] = dataUrl.split(",");
+  const type = (head.match(/^data:([^;]+)/) || [])[1] || "image/jpeg";
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new Blob([bytes], { type });
 }
 
 export async function analyzeFoodPhoto({ dataUrl, profile }) {
   const sample = await sampleReady;
-  if (!sample) throw new ScanError("Abra o FotoCal pelo claude.ai (ou pelo app do Claude) para analisar fotos.");
+  if (!sample) throw new ScanError("Abra o FotoCal pelo claude.ai (ou pelo app do Claude) para analisar fotos. (código: sem_claude)");
   const limits = await sample.limits().catch(() => null);
-  if (!limits?.images) throw new ScanError("Este aparelho ou visualizador não permite enviar fotos ao Claude.");
+  if (!limits?.images) throw new ScanError("Este aparelho ou visualizador não permite enviar fotos ao Claude. (código: sem_imagens)");
 
   const goal = { perder: "perder peso", manter: "manter o peso", ganhar: "ganhar peso" }[profile?.goal];
   let parsed;
   try {
     parsed = await sample.json(PROMPT + (goal ? `\n\n(A pessoa quer ${goal}.)` : ""), {
-      images: await dataUrlToBlob(dataUrl),
+      images: dataUrlToBlob(dataUrl),
       modelTier: "default",
     });
   } catch (e) {
-    throw new ScanError(friendly(e?.code));
+    console.error("sample.json falhou", e);
+    const code = e?.code || e?.name || "desconhecido";
+    throw new ScanError(`${friendly(e?.code)} (código: ${code})`);
   }
   if (!parsed || typeof parsed !== "object") throw new ScanError("Resposta inesperada da IA. Tente novamente.");
   parsed.e_comida = parsed.e_comida !== false;
