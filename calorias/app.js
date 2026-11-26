@@ -777,6 +777,7 @@ function pageScan() {
       <div class="page-h"><h1>${esc(r.prato || "Resultado")}</h1></div>
       ${box}
       ${r.observacao ? `<div class="warn" style="margin-top:14px">💡 ${esc(r.observacao)}</div>` : ""}
+      ${noteBox(s)}
       <div class="card" style="margin-top:14px">
         <div class="result-total"><b id="t-kcal">${fmt(t.kcal)}</b><span>kcal</span></div>
         <div class="macros" style="margin:8px 0 6px">
@@ -812,6 +813,7 @@ function pageScan() {
     </div>
     ${s.status !== "busy" ? `<div class="row-btns"><button class="btn" id="b-cam">📷 Câmera</button><button class="btn ghost" id="b-gal">🖼️ Galeria</button></div>` : ""}
     ${s.error ? `<div class="err">${esc(s.error)}</div>` : ""}
+    ${s.error && s.image ? noteBox(s) : ""}
     ${needKey() ? `<div class="warn" style="margin-top:14px">Para analisar fotos, cadastre sua chave da IA em <b>Ajustes</b>. <button class="link" id="goto-key" style="display:inline;margin:0;padding:0;color:var(--blue-2)">Cadastrar agora</button></div>` : ""}
   </div>`;
 }
@@ -832,6 +834,15 @@ function scaled(it) {
   const k = it.base.g > 0 ? it.gramas / it.base.g : 1;
   return { kcal: it.base.kcal * k, p: it.base.p * k, c: it.base.c * k, f: it.base.f * k };
 }
+function noteBox(s) {
+  return `<div class="card note-box" style="margin-top:14px">
+    <h3><label for="scan-note">${s.note ? "O que você contou" : "A foto não mostra tudo?"}</label></h3>
+    <p class="help" style="margin:-4px 0 10px">Conte o que tem dentro ou o que não aparece. Ex.: "recheio de queijo e presunto, passei manteiga".</p>
+    <textarea id="scan-note" rows="2" maxlength="500" placeholder="O que tem no prato que a foto não mostra?">${esc(s.note || "")}</textarea>
+    <button class="btn small" id="reanalyze" style="margin-top:10px">🔄 Recalcular com essa informação</button>
+  </div>`;
+}
+
 function itemsTotal(items) {
   return items.reduce((a, it) => {
     const v = scaled(it);
@@ -880,6 +891,13 @@ function bindScan() {
   }));
   document.querySelectorAll("[data-mt]").forEach((b) => b.onclick = () => { scan.type = b.dataset.mt; render(); });
   document.querySelectorAll("[data-rm]").forEach((b) => b.onclick = () => { scan.result.itens.splice(+b.dataset.rm, 1); render(); });
+  const ra = document.getElementById("reanalyze");
+  if (ra) ra.onclick = () => {
+    const note = document.getElementById("scan-note").value.trim();
+    if (!note) { toast("Escreva o que a foto não mostra"); document.getElementById("scan-note").focus(); return; }
+    scan = { ...scan, note, result: null };
+    analyze(scan.image);
+  };
   const again = document.getElementById("again");
   if (again) again.onclick = () => { scan = null; render(); };
   const sv = document.getElementById("save-meal");
@@ -902,11 +920,23 @@ function bindScan() {
 
 async function handlePhoto(file) {
   if (needKey()) { openKeySheet(false); return; }
+  let dataUrl;
+  try { dataUrl = await resizeImage(file, 1280, 0.85); }
+  catch (e) {
+    scan = { ...scan, status: "idle", error: "Não foi possível ler essa imagem. Tente outra foto." };
+    if (tab === "escanear") render();
+    return;
+  }
+  scan = { ...scan, note: "" };
+  return analyze(dataUrl);
+}
+
+// Analisa (ou reanalisa, com o que a pessoa escreveu) a foto atual.
+async function analyze(dataUrl) {
   try {
-    const dataUrl = await resizeImage(file, 1280, 0.85);
     scan = { ...scan, status: "busy", image: dataUrl, error: "" };
     render();
-    const result = await AI.analyzeFoodPhoto({ apiKey: state.apiKey, dataUrl, profile: state.profile });
+    const result = await AI.analyzeFoodPhoto({ apiKey: state.apiKey, dataUrl, profile: state.profile, note: scan.note });
     if (!result.e_comida || !result.itens.length) {
       scan = { ...scan, status: "idle", error: result.observacao || "Não identifiquei comida nessa foto. Tente fotografar o prato de cima, com boa luz." };
     } else {

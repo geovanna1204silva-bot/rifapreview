@@ -35,7 +35,8 @@ function dataUrlToBlob(dataUrl) {
   return new Blob([bytes], { type });
 }
 
-export async function analyzeFoodPhoto({ dataUrl, profile }) {
+const noteText = (note) => note ? `\n\nA pessoa contou o que a foto não mostra (confie nisso, ela sabe o que comeu): "${String(note).slice(0, 500)}". Inclua esses itens, recalcule e não repita a dúvida na observação.` : "";
+export async function analyzeFoodPhoto({ dataUrl, profile, note }) {
   const sample = await sampleReady;
   if (!sample) throw new ScanError("Abra o FotoCal pelo claude.ai (ou pelo app do Claude) para analisar fotos. (código: sem_claude)");
   const limits = await sample.limits().catch(() => null);
@@ -44,7 +45,7 @@ export async function analyzeFoodPhoto({ dataUrl, profile }) {
   const goal = { perder: "perder peso", manter: "manter o peso", ganhar: "ganhar peso" }[profile?.goal];
   let parsed;
   try {
-    parsed = await sample.json(PROMPT + (goal ? `\n\n(A pessoa quer ${goal}.)` : ""), {
+    parsed = await sample.json(PROMPT + (goal ? `\n\n(A pessoa quer ${goal}.)` : "") + noteText(note), {
       images: dataUrlToBlob(dataUrl),
       modelTier: "default",
     });

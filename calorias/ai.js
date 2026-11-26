@@ -87,7 +87,8 @@ async function candidateModels(apiKey) {
   return list;
 }
 
-export async function analyzeFoodPhoto({ apiKey, dataUrl, profile }) {
+const noteText = (note) => note ? `\n\nA pessoa contou o que a foto não mostra (confie nisso, ela sabe o que comeu): "${String(note).slice(0, 500)}". Inclua esses itens, recalcule e não repita a dúvida na observação.` : "";
+export async function analyzeFoodPhoto({ apiKey, dataUrl, profile, note }) {
   const key = String(apiKey || "").trim();
   const [, mimeType, data] = dataUrl.match(/^data:(image\/[a-z+]+);base64,(.*)$/) || [];
   if (!data) throw new ScanError("Formato de imagem não suportado.");
@@ -97,7 +98,7 @@ export async function analyzeFoodPhoto({ apiKey, dataUrl, profile }) {
       role: "user",
       parts: [
         { inlineData: { mimeType, data } },
-        { text: PROMPT + (goal ? `\n\n(A pessoa quer ${goal}.)` : "") },
+        { text: PROMPT + (goal ? `\n\n(A pessoa quer ${goal}.)` : "") + noteText(note) },
       ],
     }],
     generationConfig: { responseMimeType: "application/json", temperature: 0.2 },

@@ -57,7 +57,8 @@ Escreva tudo em português do Brasil. Se a foto não mostrar comida, retorne e_c
 let sdkPromise;
 const loadSdk = () => (sdkPromise ??= import("./vendor/anthropic-sdk-1.8.0.js").then((m) => m.default));
 
-export async function analyzeFoodPhoto({ apiKey, dataUrl, profile }) {
+const noteText = (note) => note ? `\n\nA pessoa contou o que a foto não mostra (confie nisso, ela sabe o que comeu): "${String(note).slice(0, 500)}". Inclua esses itens, recalcule e não repita a dúvida na observação.` : "";
+export async function analyzeFoodPhoto({ apiKey, dataUrl, profile, note }) {
   const Anthropic = await loadSdk();
   const [, mediaType, data] = dataUrl.match(/^data:(image\/[a-z+]+);base64,(.*)$/) || [];
   if (!data) throw new ScanError("Formato de imagem não suportado.");
@@ -82,7 +83,7 @@ export async function analyzeFoodPhoto({ apiKey, dataUrl, profile }) {
         role: "user",
         content: [
           { type: "image", source: { type: "base64", media_type: mediaType, data } },
-          { type: "text", text: `Analise esta refeição e estime as calorias de cada item.${goal ? ` (A pessoa quer ${goal}.)` : ""}` },
+          { type: "text", text: `Analise esta refeição e estime as calorias de cada item.${goal ? ` (A pessoa quer ${goal}.)` : ""}${noteText(note)}` },
         ],
       }],
     });

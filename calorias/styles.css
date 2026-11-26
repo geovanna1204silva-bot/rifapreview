@@ -226,6 +226,9 @@ h1, h2, h3 { color: var(--ink); margin: 0; letter-spacing: -.01em; }
 .warn { background: #fff4e8; color: #8a4b10; border-radius: 18px; padding: 12px 14px; font-weight: 600; font-size: 14px; margin-bottom: 12px; }
 .err { background: #fdecec; color: #8f1d22; border-radius: 18px; padding: 12px 14px; font-weight: 700; font-size: 15px; margin-top: 14px; }
 
+.note-box textarea { width: 100%; border: 1.5px solid var(--line); border-radius: 16px; padding: 12px 14px; font: inherit; font-size: 16px; font-weight: 600; color: var(--ink); background: var(--bg); resize: vertical; min-height: 64px; }
+.note-box textarea:focus { outline: none; border-color: var(--blue-2); }
+
 /* ---------- Progress ---------- */
 .wlog { display: flex; justify-content: space-between; padding: 8px 0; border-top: 1px solid var(--line); font-weight: 700; color: var(--muted); }
 .wlog b { color: var(--ink); }
