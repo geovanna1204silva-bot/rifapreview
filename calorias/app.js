@@ -1,6 +1,6 @@
 // FotoCal — contador de calorias por foto com plano personalizado.
-// Tudo fica salvo no próprio aparelho (localStorage). A análise das fotos
-// usa a API do Claude com a chave que a pessoa cadastra em Ajustes.
+// Tudo fica salvo no próprio aparelho (localStorage), inclusive a conta
+// (e-mail + hash da senha). A análise das fotos usa a IA do Claude.
 
 import * as AI from "./ai.js";
 const needKey = () => AI.needsKey && !state.apiKey;
@@ -8,7 +8,10 @@ const needKey = () => AI.needsKey && !state.apiKey;
 /* =========================================================
    Armazenamento
    ========================================================= */
-const KEY = "fotocal:v1";
+// Cada conta guarda seus dados em uma chave própria: fotocal:v1:<email>
+const LEGACY_KEY = "fotocal:v1";
+const ACC_KEY = "fotocal:accounts"; // { users: { email: {salt, hash} }, current: email|null }
+let KEY = null;
 const defaults = () => ({
   profile: null,       // preenchido ao final do questionário
   apiKey: "",
@@ -17,17 +20,52 @@ const defaults = () => ({
   reminders: [],
   lastReminder: "",
 });
-let state = load();
+let state = defaults();
 function load() {
   try {
-    const raw = localStorage.getItem(KEY);
+    const raw = KEY && localStorage.getItem(KEY);
     if (raw) return { ...defaults(), ...JSON.parse(raw) };
   } catch (_) { /* sem armazenamento: segue em memória */ }
   return defaults();
 }
 function save() {
+  if (!KEY) return;
   try { localStorage.setItem(KEY, JSON.stringify(state)); }
   catch (_) { toast("Não foi possível salvar neste aparelho (memória cheia?)"); }
+}
+
+/* =========================================================
+   Conta (e-mail e senha, guardada só neste aparelho)
+   ========================================================= */
+function readAccounts() {
+  try { return { users: {}, current: null, ...JSON.parse(localStorage.getItem(ACC_KEY) || "{}") }; }
+  catch (_) { return { users: {}, current: null }; }
+}
+function writeAccounts(a) {
+  try { localStorage.setItem(ACC_KEY, JSON.stringify(a)); return true; }
+  catch (_) { return false; }
+}
+const b64 = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf)));
+// A senha nunca é salva: guardamos só um hash PBKDF2 com sal aleatório.
+async function hashPassword(password, saltB64) {
+  const salt = saltB64 ? Uint8Array.from(atob(saltB64), (c) => c.charCodeAt(0)) : crypto.getRandomValues(new Uint8Array(16));
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(password), "PBKDF2", false, ["deriveBits"]);
+  const bits = await crypto.subtle.deriveBits({ name: "PBKDF2", salt, iterations: 150000, hash: "SHA-256" }, key, 256);
+  return { salt: b64(salt), hash: b64(bits) };
+}
+const normEmail = (e) => String(e || "").trim().toLowerCase();
+const validEmail = (e) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(e);
+function startSession(email) {
+  KEY = `${LEGACY_KEY}:${email}`;
+  state = load();
+  tab = "hoje";
+}
+function logout() {
+  const a = readAccounts(); a.current = null; writeAccounts(a);
+  KEY = null; state = defaults(); scan = null; authMode = "login";
+  draft = { name: "", goal: "", sex: "", age: "", height: "", weight: "", target: "", activity: "", pace: 0.5, obstacles: [], reminders: [] };
+  step = 0;
+  render();
 }
 
 /* =========================================================
@@ -482,12 +520,87 @@ function trajectoryChart(from, to, l1, l2) {
 }
 
 /* =========================================================
+   Tela de criar conta / entrar
+   ========================================================= */
+let authMode = "signup";
+function renderAuth() {
+  const signup = authMode === "signup";
+  $app.innerHTML = `<div class="ob auth">
+    <div class="ob-body" style="padding-bottom:40px">
+      ${hero("🥗", "linear-gradient(135deg,#7cc8ff,#2f6bf0)", `<small>🔥 Hoje</small><b>1.420 / 1.900 kcal</b><div class="mini"><i style="width:74%"></i></div>`)}
+      <h1>${signup ? "Crie sua conta" : "Entrar"}</h1>
+      <p class="sub">${signup ? "Coloque seu e-mail e crie uma senha para começar." : "Use o e-mail e a senha da sua conta."}</p>
+      <form id="auth-form" novalidate>
+        <div class="field"><label for="a-email">E-mail</label>
+          <input type="text" inputmode="email" id="a-email" autocomplete="email" autocapitalize="off" spellcheck="false" placeholder="voce@email.com"></div>
+        <div class="field"><label for="a-pass">Senha</label>
+          <input type="password" id="a-pass" autocomplete="${signup ? "new-password" : "current-password"}" placeholder="${signup ? "Mínimo 6 caracteres" : "Sua senha"}"></div>
+        ${signup ? `<div class="field"><label for="a-pass2">Confirme a senha</label>
+          <input type="password" id="a-pass2" autocomplete="new-password" placeholder="Repita a senha"></div>` : ""}
+        <p class="err" id="a-err" hidden></p>
+        <button class="btn" type="submit" id="a-submit">${signup ? "Criar conta" : "Entrar"} ${ICON.arrow}</button>
+      </form>
+      <button class="link" id="a-switch">${signup ? "Já tenho conta · <b>Entrar</b>" : "Não tem conta? <b>Criar conta</b>"}</button>
+      <p class="note" style="text-align:center">Sua conta fica salva neste aparelho.</p>
+    </div>
+  </div>`;
+  window.scrollTo(0, 0);
+  const err = document.getElementById("a-err");
+  const fail = (m) => { err.textContent = m; err.hidden = false; };
+  document.getElementById("a-switch").onclick = () => { authMode = signup ? "login" : "signup"; renderAuth(); };
+  document.getElementById("auth-form").onsubmit = async (e) => {
+    e.preventDefault();
+    err.hidden = true;
+    const email = normEmail(document.getElementById("a-email").value);
+    const pass = document.getElementById("a-pass").value;
+    if (!validEmail(email)) return fail("Digite um e-mail válido.");
+    if (!crypto?.subtle) return fail("Este navegador não permite criar conta. Abra o app pelo Safari ou Chrome.");
+    const btn = document.getElementById("a-submit");
+    btn.disabled = true;
+    try {
+      const a = readAccounts();
+      if (signup) {
+        if (pass.length < 6) return fail("A senha precisa ter pelo menos 6 caracteres.");
+        if (pass !== document.getElementById("a-pass2").value) return fail("As senhas não são iguais.");
+        if (a.users[email]) return fail("Já existe uma conta com esse e-mail neste aparelho. Toque em Entrar.");
+        a.users[email] = await hashPassword(pass);
+        a.current = email;
+        // quem já usava o app antes das contas leva os dados para a primeira conta
+        try {
+          const legacy = localStorage.getItem(LEGACY_KEY);
+          if (legacy && Object.keys(a.users).length === 1) {
+            localStorage.setItem(`${LEGACY_KEY}:${email}`, legacy);
+            localStorage.removeItem(LEGACY_KEY);
+          }
+        } catch (_) { /* ignora */ }
+        if (!writeAccounts(a)) return fail("Não foi possível salvar a conta neste aparelho.");
+        draft = { name: "", goal: "", sex: "", age: "", height: "", weight: "", target: "", activity: "", pace: 0.5, obstacles: [], reminders: [] };
+        step = 0;
+      } else {
+        const u = a.users[email];
+        if (!u) return fail("Não encontramos conta com esse e-mail neste aparelho.");
+        const { hash } = await hashPassword(pass, u.salt);
+        if (hash !== u.hash) return fail("Senha incorreta.");
+        a.current = email;
+        writeAccounts(a);
+      }
+      startSession(email);
+      render();
+      toast(signup ? "✅ Conta criada" : "👋 Que bom te ver de novo");
+    } finally {
+      btn.disabled = false;
+    }
+  };
+}
+
+/* =========================================================
    App principal
    ========================================================= */
 let tab = "hoje";
 let scan = null; // estado da tela de escanear
 
 function render() {
+  if (!KEY) return renderAuth();
   if (!state.profile) return renderOnboarding();
   const pages = { hoje: pageToday, escanear: pageScan, progresso: pageProgress, ajustes: pageSettings };
   $app.innerHTML = pages[tab]() + tabbar();
@@ -856,9 +969,13 @@ function pageSettings() {
       <div class="set-row">Lembretes <span>${state.reminders.length ? state.reminders.join(", ") : "Desligados"}</span></div>
       <button class="btn ghost small" id="redo" style="margin-top:12px">Refazer questionário</button>
     </div>
+    <div class="card"><h3>Conta</h3>
+      <div class="set-row">E-mail <span>${esc(readAccounts().current || "")}</span></div>
+      <button class="btn ghost small" id="logout" style="margin-top:12px">Sair da conta</button>
+    </div>
     <div class="card"><h3>Dados</h3>
-      <p class="help" style="margin-top:0">Tudo fica salvo só neste aparelho. As fotos são enviadas à API do Claude apenas para análise.</p>
-      <button class="danger" id="wipe">Apagar todos os dados</button>
+      <p class="help" style="margin-top:0">Sua conta e seus dados ficam salvos só neste aparelho. As fotos são enviadas à IA apenas para análise.</p>
+      <button class="danger" id="wipe">Apagar minha conta e dados</button>
     </div>
   </div>`;
 }
@@ -875,11 +992,16 @@ function bindSettings() {
     Object.assign(state, keep);
     render();
   };
+  document.getElementById("logout").onclick = logout;
   document.getElementById("wipe").onclick = async () => {
-    if (!(await askConfirm("Apagar perfil, refeições e pesos? Isso não pode ser desfeito.", "Apagar tudo"))) return;
-    state = defaults(); save();
-    draft = { name: "", goal: "", sex: "", age: "", height: "", weight: "", target: "", activity: "", pace: 0.5, obstacles: [], reminders: [] };
-    step = 0; render();
+    if (!(await askConfirm("Apagar sua conta, perfil, refeições e pesos? Isso não pode ser desfeito.", "Apagar tudo"))) return;
+    const a = readAccounts();
+    try { localStorage.removeItem(KEY); } catch (_) { /* ignora */ }
+    delete a.users[a.current];
+    writeAccounts(a);
+    authMode = "signup";
+    logout();
+    authMode = "signup"; render();
   };
 }
 
@@ -993,4 +1115,9 @@ if (AI.useServiceWorker && "serviceWorker" in navigator) {
   window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
 }
 
+{
+  const a = readAccounts();
+  if (a.current && a.users[a.current]) startSession(a.current);
+  else authMode = Object.keys(a.users).length ? "login" : "signup";
+}
 render();
